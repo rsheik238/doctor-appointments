@@ -39,6 +39,35 @@ def patient_tab(notebook: ttk.Notebook) -> None:
     cbo_patient.pack(side="left")
 
     # ── booking frame reused from earlier version (kept as-is) ──
+    
+     # ░░░  ── BOOKING PANEL ─────────────────────────────────────────────
+    book_frame = ttk.LabelFrame(tab, text="Book an appointment", padding=10)
+    book_frame.pack(fill="x", pady=12)
+
+    # Row 1 – doctor
+    ttk.Label(book_frame, text="Select doctor:").grid(row=0, column=0, sticky="e", pady=2)
+    book_doctor_combo = ttk.Combobox(book_frame, values=doctor_names, state="readonly", width=28)
+    book_doctor_combo.grid(row=0, column=1, sticky="w", pady=2)
+
+    # Row 2 – date
+    ttk.Label(book_frame, text="Select date:").grid(row=1, column=0, sticky="e", pady=2)
+    book_date_picker = DateEntry(book_frame, date_pattern="yyyy-mm-dd", width=12)
+    book_date_picker.grid(row=1, column=1, sticky="w", pady=2)
+
+    # Row 3 – time slot
+    ttk.Label(book_frame, text="Select slot:").grid(row=2, column=0, sticky="e", pady=2)
+    book_slot_combo = ttk.Combobox(book_frame, state="readonly", width=12)
+    book_slot_combo.grid(row=2, column=1, sticky="w", pady=2)
+
+    # Row 4 – button
+    ttk.Button(book_frame, text="Book appointment", command=lambda: _book()).grid(
+        row=3, column=0, columnspan=2, pady=(6, 0)
+    )
+
+    # stretch second column so labels align
+    book_frame.columnconfigure(1, weight=1)
+    
+    
     # ... you can leave your existing booking code here …
 
     # ── table header ──
@@ -53,6 +82,70 @@ def patient_tab(notebook: ttk.Notebook) -> None:
     table_frame.pack(fill="x")
 
     # ───────────────────────────────────────────────────────────────────
+    def _refresh_slot_combo(*_):
+        """Populate slot dropdown with free slots for selected doctor+date."""
+        if not (book_doctor_combo.get() and book_date_picker.get()):
+            book_slot_combo["values"] = []
+            return
+
+        slots      = get_doctor_slots()
+        dname      = book_doctor_combo.get()
+        date_str   = book_date_picker.get()
+
+        appts      = get_appointments_df()
+        taken      = appts[(appts["doctor"] == dname) & (appts["date"] == date_str)]["time"]
+        free_slots = [s for s in slots if s not in set(taken)]
+
+        book_slot_combo["values"] = free_slots
+        if free_slots:
+            book_slot_combo.current(0)
+        else:
+            book_slot_combo.set("")
+            
+    def _book() -> None:
+        if not all([
+            cbo_patient.get(),
+            book_doctor_combo.get(),
+            book_date_picker.get(),
+            book_slot_combo.get()
+        ]):
+            return messagebox.showerror("Missing", "All booking fields are required.")
+
+        pname = cbo_patient.get()
+        dname = book_doctor_combo.get()
+        date  = book_date_picker.get()
+        slot  = book_slot_combo.get()
+
+        pid = find_id_by_name(patient_df, pname)
+        did = find_id_by_name(doctor_df, dname)
+
+        # check collision
+        appts = get_appointments_df()
+        taken_today = appts[(appts["doctor"] == dname) & (appts["date"] == date)]
+        if slot in taken_today["time"].values:
+            # slot taken → suggest next free
+            suggestion = _suggest_next_free(dname, date)
+            if not suggestion:
+                return messagebox.showerror("Unavailable", "No slots available.")
+            s_date, s_slot = suggestion
+            if not messagebox.askyesno(
+                "Slot reserved",
+                f"{slot} on {date} is already reserved.\n\n"
+                f"The next free slot is {s_slot} on {s_date}.\n"
+                f"Do you want to book it?",
+            ):
+                return
+            date, slot = s_date, s_slot
+
+        # write to DB
+        hosp_addr = doctor_df[doctor_df["doctorid"] == did].iloc[0]["hospitaladdress"]
+        create_appointment(
+            dict(doctorid=did, patientid=pid, date=date, time=slot, hospitaladdress=hosp_addr)
+        )
+        messagebox.showinfo("Booked", f"Appointment booked for {date} at {slot}.")
+        _refresh_slot_combo()
+        _refresh_table()
+    
     def _clear_table():
         for w in table_frame.winfo_children():
             w.destroy()
@@ -152,3 +245,6 @@ def patient_tab(notebook: ttk.Notebook) -> None:
 
     # ── wiring ──
     cbo_patient.bind("<<ComboboxSelected>>", _refresh_table)
+    book_doctor_combo.bind("<<ComboboxSelected>>", _refresh_slot_combo)
+    book_date_picker.bind("<<DateEntrySelected>>", _refresh_slot_combo)
+    _refresh_slot_combo()
