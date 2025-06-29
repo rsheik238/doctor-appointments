@@ -1,41 +1,75 @@
+# ── src/interface/ui/tabs/doctor_tab.py ───────────────────────────────
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 from tkcalendar import DateEntry
+from datetime import datetime
+
 from src.service import get_doctors_df, get_appointments_df
-import pandas as pd
+from .utils import format_name, get_doctor_slots
 
-def format_name(row):
-    return f"{row['lastname']}, {row['firstname']}"
 
-def doctor_tab(notebook):
-    tab = ttk.Frame(notebook)
-    notebook.add(tab, text='Doctors')
+def doctor_tab(notebook: ttk.Notebook) -> None:
+    """Create the Doctors tab (self-adding)."""
+    tab = ttk.Frame(notebook, padding=10)
+    notebook.add(tab, text="Doctors")
 
-    doctor_df = get_doctors_df()
-    doctor_names = [format_name(row) for _, row in doctor_df.iterrows()]
+    # ░░ Data ░░
+    doctor_df   = get_doctors_df()
+    doctor_names = [format_name(r) for _, r in doctor_df.iterrows()]
+    slot_labels  = get_doctor_slots()        # 16 slots
 
-    ttk.Label(tab, text="Select Doctor:").pack(pady=5)
-    doctor_combo = ttk.Combobox(tab, values=doctor_names, state="readonly")
-    doctor_combo.pack()
+    # Row 0 – doctor picker
+    row0 = ttk.Frame(tab)
+    row0.pack(anchor="w")
+    ttk.Label(row0, text="Doctor:").pack(side="left", padx=(0, 4))
+    cbo_doctor = ttk.Combobox(row0, values=doctor_names, state="readonly", width=30)
+    cbo_doctor.pack(side="left")
 
-    ttk.Label(tab, text="Select Date:").pack(pady=5)
-    date_picker = DateEntry(tab, date_pattern='yyyy-mm-dd')
-    date_picker.pack()
+    # LabelFrame – Check appointments
+    lf = ttk.LabelFrame(tab, text="Check appointments", padding=10)
+    lf.pack(fill="x", pady=(10, 0))
 
-    output = tk.Text(tab, height=15, width=100)
-    output.pack(pady=10)
+    ttk.Label(lf, text="Date:").grid(row=0, column=0, sticky="e", pady=2)
+    cal_date = DateEntry(lf, date_pattern="yyyy-mm-dd", width=12)
+    cal_date.grid(row=0, column=1, sticky="w", pady=2)
 
-    def show_appointments():
-        if not doctor_combo.get():
-            return messagebox.showerror("Error", "Select a doctor.")
-        selected_date = date_picker.get()
-        df = get_appointments_df()
-        filtered = df[(df['doctor'] == doctor_combo.get()) & (df['date'] == selected_date)]
-        output.delete("1.0", tk.END)
-        if filtered.empty:
-            output.insert(tk.END, "No appointments found.")
-        else:
-            for _, row in filtered.iterrows():
-                output.insert(tk.END, f"Patient: {row['patient']}, Time: {row['time']}\n")
+    grid = ttk.Frame(lf)
+    grid.grid(row=1, column=0, columnspan=2, pady=(8, 0))
 
-    ttk.Button(tab, text="Show Appointments", command=show_appointments).pack(pady=5)
+    # Styles
+    style = ttk.Style()
+    style.configure("Available.TLabel", foreground="grey")
+    style.configure("Booked.TLabel", foreground="black")
+
+    # ── grid builder ──────────────────────────────────────────────────
+    def _draw(dname: str, date_str: str) -> None:
+        for w in grid.winfo_children():
+            w.destroy()
+
+        # header
+        ttk.Label(grid, text="Time", width=8, anchor="center").grid(row=0, column=0, padx=2)
+        ttk.Label(grid, text="Patient", width=30, anchor="center").grid(row=0, column=1, padx=2)
+
+        df_day = get_appointments_df()
+        df_day = df_day[(df_day["doctor"] == dname) & (df_day["date"] == date_str)]
+
+        for r, slot in enumerate(slot_labels, start=1):
+            ttk.Label(grid, text=slot, width=8, anchor="center").grid(row=r, column=0, padx=2, pady=1)
+
+            match = df_day[df_day["time"] == slot]
+            if match.empty:
+                text, sty = " -- ", "Available.TLabel"
+            else:
+                text, sty = match.iloc[0]["patient"], "Booked.TLabel"
+
+            ttk.Label(grid, text=text, style=sty, width=30, anchor="w").grid(
+                row=r, column=1, sticky="w", padx=2, pady=1
+            )
+
+    # ── refresh triggers ──────────────────────────────────────────────
+    def _refresh(*_):
+        if cbo_doctor.get() and cal_date.get():
+            _draw(cbo_doctor.get(), cal_date.get())
+
+    cbo_doctor.bind("<<ComboboxSelected>>", _refresh)
+    cal_date.bind("<<DateEntrySelected>>", _refresh)

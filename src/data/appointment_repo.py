@@ -19,11 +19,17 @@ def add_appointment(app: Appointment) -> None:
 
 def get_all_appointments() -> list[tuple]:
     with get_connection() as conn:
-        return conn.execute('''
-            SELECT a.appointmentid, d.firstname || ' ' || d.lastname AS doctor,
-                   p.firstname || ' ' || p.lastname AS patient,
+        return conn.execute("""
+            SELECT a.appointmentid,
+                   d.lastname || ', ' || d.firstname              AS doctor,      -- ← changed
+                   p.lastname || ', ' || p.firstname              AS patient,     -- ← changed
                    a.date, a.time, a.hospitaladdress
             FROM appointments a
-            JOIN doctors d ON a.doctorid = d.doctorid
+            JOIN doctors d  ON a.doctorid  = d.doctorid
             JOIN patients p ON a.patientid = p.patientid
-        ''').fetchall()
+        """).fetchall()
+
+def delete_appointment(app_id: int) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM appointments WHERE appointmentid = ?", (app_id,))
+        conn.commit()

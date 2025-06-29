@@ -1,12 +1,15 @@
+# src/data/db.py
 import sqlite3
 import os
+from pathlib import Path
 
-# Resolve DB path relative to the project root (not to this file)
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-DB_PATH = os.path.join(BASE_DIR, "hospital.db")
+# project-root = ../../.. from this file
+BASE_DIR: Path = Path(__file__).resolve().parents[2]
+DB_PATH: Path = BASE_DIR / "hospital.db"
 
-def get_connection():
-    return sqlite3.connect('hospital.db')
+def get_connection() -> sqlite3.Connection:
+    # ALWAYS use the same absolute file
+    return sqlite3.connect(DB_PATH)
 
 def init_db():
     with get_connection() as conn:

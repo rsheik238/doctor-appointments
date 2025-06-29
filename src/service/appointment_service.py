@@ -11,3 +11,6 @@ def get_appointments_df() -> pd.DataFrame:
     return pd.DataFrame(rows, columns=[
         "appointmentid", "doctor", "patient", "date", "time", "hospitaladdress"
     ])
+
+def delete_appointment(app_id: int) -> None:
+    appointment_repo.delete_appointment(app_id)
